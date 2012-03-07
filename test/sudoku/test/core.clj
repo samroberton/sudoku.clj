@@ -116,3 +116,27 @@
                                       "Duplicate digit(s) in column 9: 8"
                                       "Duplicate digit(s) in box 2: 4"
                                       "Duplicate digit(s) in box 5: 5"])))
+
+(def +simple1-prob+ ".4..2..7.
+...4.59..
+8.....364
+16..8429.
+2...1...6
+.9725..38
+536.....7
+..21.7...
+.1..6..2.")
+
+(def +simple1-soln+ "349628571
+671435982
+825971364
+163784295
+258319746
+497256138
+536892417
+982147653
+714563829")
+
+(deftest simple1-solved?
+  (is (= (solved? (str->puzzle +simple1-prob+)) false))
+  (is (= (solved? (str->puzzle +simple1-soln+)) true)))
