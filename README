@@ -1,0 +1,15 @@
+# sudoku.clj
+
+A toy Sudoku solver in Clojure.
+
+
+## Usage
+
+See functions in sudoku/core.clj.  (No command-line handling at this stage.)
+
+
+## License
+
+Copyright (C) 2012 Sam Roberton
+
+Distributed under the Eclipse Public License, the same as Clojure.
