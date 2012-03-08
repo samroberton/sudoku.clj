@@ -7,33 +7,20 @@
 ;;; Representation
 ;;;
 
-(defn- idx->coord
-  "Converts an index (0-80) to a pair of one-based [row col] coordinates into the puzzle grid."
-  [idx]
-  [(inc (/ idx 9)) (inc (rem idx 9))])
-
-(defn- coord->idx
-  "Converts a pair of one-based [row col] coordinates to a 0-80 index into the puzzle
-representation."
-  [row col]
-  (+ (* (dec row) 9) (dec col)))
-
-(defn- digit-at
+(defn digit-at
   "Get the digit at the given index or coordinates in the puzzle representation."
-  ([puzzle idx]
-     (puzzle idx))
-  ([puzzle row col]
-     (puzzle (coord->idx row col))))
+  [puzzle row col]
+  (puzzle [row col]))
 
-(defn- add-digit
+(defn add-digit
   "Adds the given digit to the puzzle representation at the given index, returning a new puzzle
 representation."
-  [puzzle idx d]
+  [puzzle row col d]
   (let [val (cond (= \. d) nil
                   (+digits+ d) d
-                  :else (throw (Exception. (str "Character at coordinates [" (idx->coord idx)
+                  :else (throw (Exception. (str "Character at coordinates [" row " " col
                                                 "] is '" d "'; expected a digit or '.'."))))]
-    (if val (assoc puzzle idx val) puzzle)))
+    (if val (assoc puzzle [row col] val) puzzle)))
 
 (defn extract-row
   [puzzle row]
@@ -43,31 +30,35 @@ representation."
   [puzzle col]
   (map #(digit-at puzzle %1 col) (range 1 10)))
 
+(def +box-origins+
+  [[1 1] [1 4] [1 7] [4 1] [4 4] [4 7] [7 1] [7 4] [7 7]])
+
+(defn identify-box
+  [row col]
+  (loop [[origin & rem-origins] +box-origins+
+         box 1]
+    (if (= origin [(inc (* 3 (int (/ (dec row) 3))))
+                   (inc (* 3 (int (/ (dec col) 3))))])
+      box
+      (recur rem-origins (inc box)))))
+
 (defn extract-box
   [puzzle box]
-  (let [origin ({1 0,
-                 2 3,
-                 3 6,
-                 4 27,
-                 5 30,
-                 6 33,
-                 7 54,
-                 8 57,
-                 9 60} box)]
-    (map #(digit-at puzzle (+ %1 origin))
-         [0 1 2 9 10 11 18 19 20])))
+  (let [[origin-row origin-col] (+box-origins+ (dec box))]
+    (map (fn [[row col]] (digit-at puzzle (+ origin-row row) (+ origin-col col)))
+         [[0 0] [0 1] [0 2] [1 0] [1 1] [1 2] [2 0] [2 1] [2 2]])))
 
 (defn str->puzzle
   "Take a string of 9 newline separated rows of 9 digits, with '.' for an as-yet-undetermined digit,
-and convert it to the program's internal representation of a Sudoku puzzle (a map of 0-80 to
-Integers)."
+and convert it to the program's internal representation of a Sudoku puzzle."
   [str]
   (let [s (.replaceAll str "\n" "")]
     (loop [idx    0
            puzzle {}]
       (if (= idx (.length s))
         puzzle
-        (recur (inc idx) (add-digit puzzle idx (.charAt s idx)))))))
+        (recur (inc idx)
+               (add-digit puzzle (inc (int (/ idx 9))) (inc (rem idx 9)) (.charAt s idx)))))))
 
 (defn puzzle->str
   "Get the puzzle representation as a string."
@@ -87,7 +78,9 @@ Integers)."
 (defn complete?
   "True if all positions in the puzzle have a digit."
   [puzzle]
-  (every? #(puzzle %1) (range 0 81)))
+  (every? #(puzzle %1) (for [row (range 1 10)
+                             col (range 1 10)]
+                         [row col])))
 
 (defn- find-dups
   "Identify digits which are present more than once in the row/col/box (specified by using
