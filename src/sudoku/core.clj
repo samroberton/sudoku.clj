@@ -1,6 +1,6 @@
 (ns sudoku.core
   (:use [clojure.string :only [join]])
-  (:use [clojure.set :only [difference]]))
+  (:use [clojure.set :only [intersection]]))
 
 ;;
 ;; ## Utilities
@@ -83,17 +83,27 @@ column."
   "Get the value in the cell at the given row and column, or nil if there isn't a value specified
 for that cell yet."
   [puzzle [row col]]
-  (puzzle [row col]))
+  (:value (get puzzle [row col])))
+
+(defn candidates
+  "Get the set of possible candidates for the cell a given row and column. If there is a defined
+value for the cell already, return the empty set."
+  [puzzle [row col]]
+  (if (value puzzle [row col])
+    #{}
+    (:candidates (get puzzle [row col]))))
 
 (defn assoc-value
   "Associates the specified value with the cell at the given row and column, returning a new puzzle
 representation."
   [puzzle [row col] val]
-  (let [v (cond (= \. val) nil
-                (+values+ val) val
-                :else (throw (Exception. (str "Character at coordinates [" row " " col
-                                              "] is '" val "'; expected a digit or '.'."))))]
-    (if v (assoc puzzle [row col] v) puzzle)))
+  (assoc puzzle [row col] {:value val}))
+
+(defn exclude-candidates
+  "Excludes the specified set of values as candidates for the cell at the given  row and column,
+returning a new puzzle representation."
+  [puzzle [row col] vals]
+  (assoc puzzle [row col] {:candidates (apply disj (candidates puzzle [row col]) vals)}))
 
 (defn str->puzzle
   "Take a string of 9 newline separated rows of 9 digits, with '.' for an as-yet-undetermined digit,
@@ -105,7 +115,15 @@ and convert it to the program's internal representation of a Sudoku puzzle."
       (if (= idx (.length s))
         puzzle
         (recur (inc idx)
-               (assoc-value puzzle [(int (/ idx 9)) (rem idx 9)] (.charAt s idx)))))))
+               (let [c   (.charAt s idx)
+                     row (int (/ idx 9))
+                     col (rem idx 9)]
+                 (cond (= c \.)     (assoc puzzle [row col] {:candidates +values+})
+                       (+values+ c) (assoc-value puzzle [row col] c)
+                       :else        (throw
+                                     (Exception.
+                                      (str "Character at coordinates [" row " " col
+                                           "] is '" c "'; expected a digit or '.'."))))))))))
 
 (defn puzzle->str
   "Get the puzzle representation as a string."
@@ -157,50 +175,54 @@ nil if there are no duplicates in those cells."
 ;;
 ;; ## Inference rules
 ;;
-;; The inference rules each take a puzzle and return a seq of 'next steps':  cells whose values the
-;; inference rule has determined.
+;; The inference rules each take a puzzle and return a seq of 'next steps'.  Each 'next step' is a
+;; map of the form `{:cell cell :value <value>}` or `{:cell cell :exclude #{<values>}}`.
 ;;
 
-(defn- available-values
-  "Identify the values which a given cell could have once other known values from its row, column
-and box are ruled out."
-  [puzzle [row col]]
-  (difference +values+ (into #{} (map-when #(value puzzle %1)
-                                           (concat (+rows+ row)
-                                                   (+cols+ col)
-                                                   (+boxes+ (+cell-to-box+ [row col])))))))
-
-(defn easy-rule
-  "Finds any cell whose value can be determined because there is only one possibility left after
-eliminating known values from the rest of its row, column and box."
+(defn only-one-candidate-rule
+  "Cells with only one candidate must have that as their value."
   [puzzle]
   (map-when (fn [cell]
-              (let [avail (available-values puzzle cell)]
-                (when (= 1 (count avail))
-                  [cell (first avail)])))
+              (when (= 1 (count (candidates puzzle cell)))
+                {:cell cell :value (first (candidates puzzle cell))}))
             (unknown-cells puzzle)))
 
-(defn- possible-cells
-  [puzzle cells value]
-  (map-when #(if (contains? (available-values puzzle %1) value) %1) cells))
+(defn eliminate-known-values-rule
+  "Eliminates from the candidate set for a cell all known values from the rest of its row, column
+and box."
+  [puzzle]
+  (map-when (fn [[row col]]
+              (let [excluded (intersection (candidates puzzle [row col])
+                                           (into #{} (map-when #(value puzzle %1)
+                                                 (concat (+rows+ row)
+                                                         (+cols+ col)
+                                                         (+boxes+ (+cell-to-box+ [row col]))))))]
+                (when-not (empty? excluded)
+                  {:cell [row col] :exclude excluded})))
+            (unknown-cells puzzle)))
 
-(defn medm-rule
-  "Checks each row, column and box in turn, for each digit, looking for any cell which is the only
+(defn only-available-cell-for-value-rule
+  "Checks each row, column and box in turn, for each value, looking for any cell which is the only
 possible remaining place for that value."
   [puzzle]
-  (letfn [(forced-cells [cells]
-            (not-empty (map-when #(let [poss (possible-cells puzzle cells %1)]
+  (letfn [(find-possible-cells-for-value [cells val]
+            (map-when #(if (contains? (candidates puzzle %1) val) %1) cells))
+          (find-forced-cells [cells]
+            (not-empty (map-when #(let [poss (find-possible-cells-for-value cells %1)]
                                     (when (= 1 (count poss))
-                                      [(first poss) %1]))
-                                 (filter (fn [v]
-                                           (not-any? #(= v (value puzzle %1)) cells))
+                                      {:cell (first poss) :value %1}))
+                                 (filter (fn [val]
+                                           (not-any? #(= val (value puzzle %1)) cells))
                                          +values+))))
-          (forced-cells-in-colls [collection]
-            (apply concat (map-when forced-cells collection)))]
-    (seq (into #{} (concat (forced-cells-in-colls +rows+)
-                           (forced-cells-in-colls +cols+)
-                           (forced-cells-in-colls +boxes+))))))
+          (find-forced-cells-in-colls [collection]
+            (apply concat (map-when find-forced-cells collection)))]
+    (seq (into #{} (concat (find-forced-cells-in-colls +rows+)
+                           (find-forced-cells-in-colls +cols+)
+                           (find-forced-cells-in-colls +boxes+))))))
 
+(def +inference-rules+ [only-one-candidate-rule
+                        eliminate-known-values-rule
+                        only-available-cell-for-value-rule])
 
 ;;
 ;; ## Put it all together...
@@ -215,8 +237,7 @@ possible remaining place for that value."
   "Apply the inference rules one at a time until one of them produces a result, and return that.
 This way we do everything we can with the easiest inference rule, and only apply more complicated
 rules when we're otherwise stuck."
-  (or (not-empty (easy-rule puzzle))
-      (not-empty (medm-rule puzzle))))
+  (first (map-when #(not-empty (%1 puzzle)) +inference-rules+)))
 
 (defn solve
   "Solve the puzzle, if possible. Return `[solved? solution]`, where `solved?` is true/false, and
@@ -238,10 +259,16 @@ rules when we're otherwise stuck."
           :else
           (do
             (when *print-working*
-              (println "Filling in the following values:")
-              (doseq [[[row col] val] inferences]
-                (println (str "\trow " row ", col " col ": " val))))
+              (println "Progress:")
+              (doseq [{[row col] :cell val :value exclusions :exclude} inferences]
+                (println (str "\trow " row ", col " col ": "
+                              (if val
+                                (str "set to " val)
+                                (str "exclude " (join ", " exclusions)))))))
             (solve
-             (reduce (fn [puzzle [cell val]] (assoc-value puzzle cell val))
+             (reduce (fn [puzzle {cell :cell val :value exclusions :exclude}]
+                       (if val
+                         (assoc-value puzzle cell val)
+                         (exclude-candidates puzzle cell exclusions)))
                      puzzle
                      inferences))))))
