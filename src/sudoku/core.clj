@@ -2,61 +2,98 @@
   (:use [clojure.string :only [join]])
   (:use [clojure.set :only [difference]]))
 
-(def +digits+ #{\1 \2 \3 \4 \5 \6 \7 \8 \9})
+;;
+;; ## Utilities
+;;
 
-;;;
-;;; Representation
-;;;
+(defn map-when
+  "Like map, but discard results which are nil from the mapped collection."
+  [f coll]
+  (filter identity (map f coll)))
 
-(defn digit-at
-  "Get the digit at the given index or coordinates in the puzzle representation."
-  [puzzle row col]
+
+;;
+;; ## Representation
+;;
+;; A puzzle contains nine rows and nine columns, for a total of 81 cells. The nine three by three
+;; grids within each puzzle are referred to as 'boxes'. The digit in a cell is referred to as its
+;; value, and values are represented as characters (not as integers). No distinction is made between
+;; values which are supplied as part of the puzzle and values which are identified during the
+;; generation of the solution.
+;;
+;; The rows, columns and boxes are each numbered from zero to eight. Rows are numbered top-down,
+;; columns left-to-right, and boxes left-to-right and then top-to-bottom (as though read in
+;; English).
+;;
+;; Puzzles are entered and printed as strings in the following form:
+;;
+;; <pre><code>
+;; .4..2..7.
+;; ...4.59..
+;; 8.....364
+;; 16..8429.
+;; 2...1...6
+;; .9725..38
+;; 536.....7
+;; ..21.7...
+;; .1..6..2.
+;; </code></pre>
+;;
+;; where dots represent cells with unknown values.
+;;
+
+(def +values+
+  "The set of possible values in a cell."
+  #{\1 \2 \3 \4 \5 \6 \7 \8 \9})
+
+(def +cells+
+  "A flat seq of all the cells in a puzzle, with all the cells in row one followed by all the cells
+in row two, etc."
+  (for [r (range 9) c (range 9)] [r c]))
+
+(def +rows+
+  "A sorted mapping from row number to seq of [row column] coordinates of the cells in that row."
+  (into [] (for [r (range 9)]
+             (into [] (for [c (range 9)]
+                        [r c])))))
+
+(def +cols+
+  "A sorted mapping from column number to seq of [row column] coordinates of the cells in that
+column."
+  (into [] (for [c (range 9)]
+             (into [] (for [r (range 9)]
+                        [r c])))))
+
+(def +boxes+
+  "A sorted mapping from box number to seq of [row column] coordinates of the cells in that box."
+  (into [] (for [origin-r (range 0 9 3)
+                 origin-c (range 0 9 3)]
+             (into [] (for [offset-r (range 3)
+                            offset-c (range 3)]
+                        [(+ origin-r offset-r) (+ origin-c offset-c)])))))
+
+(def +cell-to-box+
+  "A mapping from [row column] coordinates to the box which that cell occupies."
+  (into {} (apply concat (map-indexed (fn [index cells]
+                                        (map (fn [cell] [cell index])
+                                             cells))
+                                      +boxes+))))
+
+(defn value
+  "Get the value in the cell at the given row and column, or nil if there isn't a value specified
+for that cell yet."
+  [puzzle [row col]]
   (puzzle [row col]))
 
-(defn add-digit
-  "Adds the given digit to the puzzle representation at the given index, returning a new puzzle
+(defn assoc-value
+  "Associates the specified value with the cell at the given row and column, returning a new puzzle
 representation."
-  [puzzle row col d]
-  (let [val (cond (= \. d) nil
-                  (+digits+ d) d
-                  :else (throw (Exception. (str "Character at coordinates [" row " " col
-                                                "] is '" d "'; expected a digit or '.'."))))]
-    (if val (assoc puzzle [row col] val) puzzle)))
-
-(defn unknowns
-  "Return a lazy seq of the (one-based) [x y] coordinates of all positions in the puzzle which do
-not have a digit."
-  [puzzle]
-  (filter (fn [[row col]] (not (digit-at puzzle row col)))
-          (for [row (range 1 10)
-                col (range 1 10)]
-            [row col])))
-
-(defn extract-row
-  [puzzle row]
-  (map #(digit-at puzzle row %1) (range 1 10)))
-
-(defn extract-col
-  [puzzle col]
-  (map #(digit-at puzzle %1 col) (range 1 10)))
-
-(def +box-origins+
-  [[1 1] [1 4] [1 7] [4 1] [4 4] [4 7] [7 1] [7 4] [7 7]])
-
-(defn identify-box
-  [row col]
-  (loop [[origin & rem-origins] +box-origins+
-         box 1]
-    (if (= origin [(inc (* 3 (int (/ (dec row) 3))))
-                   (inc (* 3 (int (/ (dec col) 3))))])
-      box
-      (recur rem-origins (inc box)))))
-
-(defn extract-box
-  [puzzle box]
-  (let [[origin-row origin-col] (+box-origins+ (dec box))]
-    (map (fn [[row col]] (digit-at puzzle (+ origin-row row) (+ origin-col col)))
-         [[0 0] [0 1] [0 2] [1 0] [1 1] [1 2] [2 0] [2 1] [2 2]])))
+  [puzzle [row col] val]
+  (let [v (cond (= \. val) nil
+                (+values+ val) val
+                :else (throw (Exception. (str "Character at coordinates [" row " " col
+                                              "] is '" val "'; expected a digit or '.'."))))]
+    (if v (assoc puzzle [row col] v) puzzle)))
 
 (defn str->puzzle
   "Take a string of 9 newline separated rows of 9 digits, with '.' for an as-yet-undetermined digit,
@@ -68,93 +105,109 @@ and convert it to the program's internal representation of a Sudoku puzzle."
       (if (= idx (.length s))
         puzzle
         (recur (inc idx)
-               (add-digit puzzle (inc (int (/ idx 9))) (inc (rem idx 9)) (.charAt s idx)))))))
+               (assoc-value puzzle [(int (/ idx 9)) (rem idx 9)] (.charAt s idx)))))))
 
 (defn puzzle->str
   "Get the puzzle representation as a string."
   [puzzle]
-  (join \newline
-        (map (fn [row]
-               (join (map (fn [col]
-                            (or (digit-at puzzle row col) \.))
-                          (range 1 10))))
-             (range 1 10))))
+  (join \newline (map (fn [cells]
+                        (join (map #(or (value puzzle %1) \.) cells)))
+                      +rows+)))
 
 
-;;;
-;;; Solution checking
-;;;
-
-(defn complete?
-  "True if all positions in the puzzle have a digit."
-  [puzzle]
-  (every? #(puzzle %1) (for [row (range 1 10)
-                             col (range 1 10)]
-                         [row col])))
+;;
+;; ## Solution checking
+;;
 
 (defn- find-dups
-  "Identify digits which are present more than once in the row/col/box (specified by using
-extract-row, extract-col or extract-box as the extract-fn) 'n'. Returns nil if there are no
-duplicates in the row/col/box."
-  [puzzle extract-fn n]
+  "Identify values which are present more than once in the cells at the given coordinates. Returns
+nil if there are no duplicates in those cells."
+  [puzzle cells]
   (not-empty
-   (filter (fn [d]
-             (< 1 (count (filter #(= d %1) (extract-fn puzzle n)))))
-           +digits+)))
+   (filter (fn [val]
+             (< 1 (count (filter #(= val %1) (map #(value puzzle %1) cells)))))
+           +values+)))
 
 (defn errors
   "Returns a seq of error messages, which is empty if there are no errors in the puzzle."
   [puzzle]
   (filter identity
-          (for [[f name] [[extract-row "row"] [extract-col "column"] [extract-box "box"]]
-                n        (range 1 10)]
-            (let [dups (find-dups puzzle f n)]
+          (for [[cells-map name] [[+rows+ "row"] [+cols+ "column"] [+boxes+ "box"]]
+                n        (range 9)]
+            (let [dups (find-dups puzzle (cells-map n))]
               (when dups
                 (str "Duplicate digit(s) in " name " " n ": " (join ", " dups)))))))
+
+(defn unknown-cells
+  "Return a flat seq of the [row column] coordinates of all cells which don't have a value."
+  [puzzle]
+  (filter #(not (value puzzle %1)) +cells+))
+
+(defn complete?
+  "True if all cells in the puzzle have a value."
+  [puzzle]
+  (empty? (unknown-cells puzzle)))
 
 (defn solved?
   "True if the puzzle is solved."
   [puzzle]
-  (and (empty? (errors puzzle))
-       (complete? puzzle)))
+  (and (empty? (errors puzzle)) (complete? puzzle)))
 
 
-;;;
-;;; Solution generation
-;;;
+;;
+;; ## Inference rules
+;;
+;; The inference rules each take a puzzle and return a seq of 'next steps':  cells whose values the
+;; inference rule has determined.
+;;
 
-(defn- list-avail-digits
-  "Identify the digits which a given coordinate could have once other known digits from its row,
-column and box are ruled out."
-  [puzzle row col]
-  (letfn [(digits-in [coll]
-            (into #{} (filter identity coll)))]
-    (difference +digits+
-                (digits-in (extract-row puzzle row))
-                (digits-in (extract-col puzzle col))
-                (digits-in (extract-box puzzle (identify-box row col))))))
+(defn- available-values
+  "Identify the values which a given cell could have once other known values from its row, column
+and box are ruled out."
+  [puzzle [row col]]
+  (difference +values+ (into #{} (map-when #(value puzzle %1)
+                                           (concat (+rows+ row)
+                                                   (+cols+ col)
+                                                   (+boxes+ (+cell-to-box+ [row col])))))))
 
-(defn next-steps
+(defn easy-rule
+  "Finds any cell whose value can be determined because there is only one possibility left after
+eliminating known values from the rest of its row, column and box."
   [puzzle]
-  (filter identity
-          (map (fn [[row col]]
-                 (let [avail (list-avail-digits puzzle row col)]
-                   (when (= 1 (count avail))
-                     [[row col] (first avail)])))
-               (unknowns puzzle))))
+  (map-when (fn [cell]
+              (let [avail (available-values puzzle cell)]
+                (when (= 1 (count avail))
+                  [cell (first avail)])))
+            (unknown-cells puzzle)))
 
-(def ^:dynamic *print-working* false)
+
+;;
+;; ## Put it all together...
+;;
+
+(def ^:dynamic *print-working*
+  "Set to true to enable println logging of how the solution is being reached."
+  false)
+
+(defn apply-rules
+  [puzzle]
+  "Apply the inference rules one at a time until one of them produces a result, and return that.
+This way we do everything we can with the easiest inference rule, and only apply more complicated
+rules when we're otherwise stuck."
+  (or (not-empty (easy-rule puzzle))))
 
 (defn solve
+  "Solve the puzzle, if possible. Return `[solved? solution]`, where `solved?` is true/false, and
+`solution` is the completed solution (if solved) or as far as we could get (if not)."
   [puzzle]
-  (let [steps (next-steps puzzle)]
+  (let [inferences (apply-rules puzzle)]
     (cond (solved? puzzle)
           (do
             (when *print-working*
               (println "Puzzle is solved!")
               (println (puzzle->str puzzle)))
             [true puzzle])
-          (empty? steps)
+          (empty? inferences)
           (do
             (when *print-working*
               (println "Puzzle is not solved, but I don't know where to go from here...")
@@ -163,12 +216,10 @@ column and box are ruled out."
           :else
           (do
             (when *print-working*
-              (println "Filling in the following digits:")
-              (doseq [[[row col] digit] steps]
-                (println (str "\trow " row ", col " col ": " digit))))
-            (loop [steps steps
-                   puzzle puzzle]
-              (let [[[[row col] digit] & more-steps] steps]
-                (if (empty? steps)
-                  (solve puzzle)
-                  (recur more-steps (add-digit puzzle row col digit)))))))))
+              (println "Filling in the following values:")
+              (doseq [[[row col] val] inferences]
+                (println (str "\trow " row ", col " col ": " val))))
+            (solve
+             (reduce (fn [puzzle [cell val]] (assoc-value puzzle cell val))
+                     puzzle
+                     inferences))))))

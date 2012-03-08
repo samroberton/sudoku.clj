@@ -2,7 +2,7 @@
   (:use [sudoku.core])
   (:use [clojure.test]))
 
-(def +rows+ "111111111
+(def +by-rows+ "111111111
 222222222
 333333333
 444444444
@@ -12,7 +12,7 @@
 888888888
 999999999")
 
-(def +cols+ "123456789
+(def +by-cols+ "123456789
 123456789
 123456789
 123456789
@@ -22,7 +22,7 @@
 123456789
 123456789")
 
-(def +boxes+ "111222333
+(def +by-boxes+ "111222333
 111222333
 111222333
 444555666
@@ -34,45 +34,9 @@
 
 (deftest str->puzzle->str
   (are [p] (= p (puzzle->str (str->puzzle p)))
-       +rows+
-       +cols+
-       +boxes+))
-
-(deftest test-extract-row
-  (are [x] (= (extract-row (str->puzzle +rows+) x) (repeat 9 (.charAt (str x) 0)))
-       1
-       2
-       3
-       4
-       5
-       6
-       7
-       8
-       9))
-
-(deftest test-extract-col
-  (are [x] (= (extract-col (str->puzzle +cols+) x) (repeat 9 (.charAt (str x) 0)))
-       1
-       2
-       3
-       4
-       5
-       6
-       7
-       8
-       9))
-
-(deftest test-extract-box
-  (are [x] (= (extract-box (str->puzzle +boxes+) x) (repeat 9 (.charAt (str x) 0)))
-       1
-       2
-       3
-       4
-       5
-       6
-       7
-       8
-       9))
+       +by-rows+
+       +by-cols+
+       +by-boxes+))
 
 (def +incomplete+ "123456789
 123456789
@@ -86,13 +50,13 @@
 
 (deftest test-complete?
   (are [p complete] (= (complete? (str->puzzle p)) complete)
-       +rows+ true
-       +cols+ true
-       +boxes+ true
+       +by-rows+ true
+       +by-cols+ true
+       +by-boxes+ true
        +incomplete+ false))
 
 (deftest test-unknowns
-  (is (= [[3 7] [8 5]] (unknowns (str->puzzle +incomplete+)))))
+  (is (= [[2 6] [7 4]] (unknown-cells (str->puzzle +incomplete+)))))
 
 (def +e1+ "1.......1
 .........
@@ -114,11 +78,11 @@
 .........")
 
 (deftest test-errors
-  (is (= (errors (str->puzzle +e1+)) ["Duplicate digit(s) in row 1: 1"]))
-  (is (= (errors (str->puzzle +e2+)) ["Duplicate digit(s) in row 3: 2, 4"
-                                      "Duplicate digit(s) in column 9: 8"
-                                      "Duplicate digit(s) in box 2: 4"
-                                      "Duplicate digit(s) in box 5: 5"])))
+  (is (= (errors (str->puzzle +e1+)) ["Duplicate digit(s) in row 0: 1"]))
+  (is (= (errors (str->puzzle +e2+)) ["Duplicate digit(s) in row 2: 2, 4"
+                                      "Duplicate digit(s) in column 8: 8"
+                                      "Duplicate digit(s) in box 1: 4"
+                                      "Duplicate digit(s) in box 4: 5"])))
 
 (def +simple1-prob+ ".4..2..7.
 ...4.59..
