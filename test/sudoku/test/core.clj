@@ -81,7 +81,7 @@
 123456789
 123456789
 123456789
-123456789
+1234.6789
 123456789")
 
 (deftest test-complete?
@@ -90,6 +90,9 @@
        +cols+ true
        +boxes+ true
        +incomplete+ false))
+
+(deftest test-unknowns
+  (is (= [[3 7] [8 5]] (unknowns (str->puzzle +incomplete+)))))
 
 (def +e1+ "1.......1
 .........
@@ -140,3 +143,16 @@
 (deftest simple1-solved?
   (is (= (solved? (str->puzzle +simple1-prob+)) false))
   (is (= (solved? (str->puzzle +simple1-soln+)) true)))
+
+(deftest solve-simple1
+  (is (= (puzzle->str (second (solve (str->puzzle +simple1-prob+)))) +simple1-soln+)))
+
+(def +hard1-prob+ "..9.8..1.
+..5.....2
+1...2.853
+6.1......
+8..3.6..1
+......3.7
+467.1...5
+5.....1..
+.1..3.9..")

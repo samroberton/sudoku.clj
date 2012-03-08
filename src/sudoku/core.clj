@@ -1,5 +1,6 @@
 (ns sudoku.core
-  (:use [clojure.string :only [join]]))
+  (:use [clojure.string :only [join]])
+  (:use [clojure.set :only [difference]]))
 
 (def +digits+ #{\1 \2 \3 \4 \5 \6 \7 \8 \9})
 
@@ -21,6 +22,15 @@ representation."
                   :else (throw (Exception. (str "Character at coordinates [" row " " col
                                                 "] is '" d "'; expected a digit or '.'."))))]
     (if val (assoc puzzle [row col] val) puzzle)))
+
+(defn unknowns
+  "Return a lazy seq of the (one-based) [x y] coordinates of all positions in the puzzle which do
+not have a digit."
+  [puzzle]
+  (filter (fn [[row col]] (not (digit-at puzzle row col)))
+          (for [row (range 1 10)
+                col (range 1 10)]
+            [row col])))
 
 (defn extract-row
   [puzzle row]
@@ -113,8 +123,52 @@ duplicates in the row/col/box."
 ;;; Solution generation
 ;;;
 
-(defn- find-avail
-  "Identify digits which are not present in the given sequence."
-  [digits]
-  (filter #(not (digits %1)) +digits+))
+(defn- list-avail-digits
+  "Identify the digits which a given coordinate could have once other known digits from its row,
+column and box are ruled out."
+  [puzzle row col]
+  (letfn [(digits-in [coll]
+            (into #{} (filter identity coll)))]
+    (difference +digits+
+                (digits-in (extract-row puzzle row))
+                (digits-in (extract-col puzzle col))
+                (digits-in (extract-box puzzle (identify-box row col))))))
 
+(defn next-steps
+  [puzzle]
+  (filter identity
+          (map (fn [[row col]]
+                 (let [avail (list-avail-digits puzzle row col)]
+                   (when (= 1 (count avail))
+                     [[row col] (first avail)])))
+               (unknowns puzzle))))
+
+(def ^:dynamic *print-working* false)
+
+(defn solve
+  [puzzle]
+  (let [steps (next-steps puzzle)]
+    (cond (solved? puzzle)
+          (do
+            (when *print-working*
+              (println "Puzzle is solved!")
+              (println (puzzle->str puzzle)))
+            [true puzzle])
+          (empty? steps)
+          (do
+            (when *print-working*
+              (println "Puzzle is not solved, but I don't know where to go from here...")
+              (println (puzzle->str puzzle)))
+            [false puzzle])
+          :else
+          (do
+            (when *print-working*
+              (println "Filling in the following digits:")
+              (doseq [[[row col] digit] steps]
+                (println (str "\trow " row ", col " col ": " digit))))
+            (loop [steps steps
+                   puzzle puzzle]
+              (let [[[[row col] digit] & more-steps] steps]
+                (if (empty? steps)
+                  (solve puzzle)
+                  (recur more-steps (add-digit puzzle row col digit)))))))))
