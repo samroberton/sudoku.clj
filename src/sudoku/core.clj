@@ -180,6 +180,27 @@ eliminating known values from the rest of its row, column and box."
                   [cell (first avail)])))
             (unknown-cells puzzle)))
 
+(defn- possible-cells
+  [puzzle cells value]
+  (map-when #(if (contains? (available-values puzzle %1) value) %1) cells))
+
+(defn medm-rule
+  "Checks each row, column and box in turn, for each digit, looking for any cell which is the only
+possible remaining place for that value."
+  [puzzle]
+  (letfn [(forced-cells [cells]
+            (not-empty (map-when #(let [poss (possible-cells puzzle cells %1)]
+                                    (when (= 1 (count poss))
+                                      [(first poss) %1]))
+                                 (filter (fn [v]
+                                           (not-any? #(= v (value puzzle %1)) cells))
+                                         +values+))))
+          (forced-cells-in-colls [collection]
+            (apply concat (map-when forced-cells collection)))]
+    (seq (into #{} (concat (forced-cells-in-colls +rows+)
+                           (forced-cells-in-colls +cols+)
+                           (forced-cells-in-colls +boxes+))))))
+
 
 ;;
 ;; ## Put it all together...
@@ -194,7 +215,8 @@ eliminating known values from the rest of its row, column and box."
   "Apply the inference rules one at a time until one of them produces a result, and return that.
 This way we do everything we can with the easiest inference rule, and only apply more complicated
 rules when we're otherwise stuck."
-  (or (not-empty (easy-rule puzzle))))
+  (or (not-empty (easy-rule puzzle))
+      (not-empty (medm-rule puzzle))))
 
 (defn solve
   "Solve the puzzle, if possible. Return `[solved? solution]`, where `solved?` is true/false, and

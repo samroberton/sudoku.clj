@@ -111,6 +111,29 @@
 (deftest solve-simple1
   (is (= (puzzle->str (second (solve (str->puzzle +simple1-prob+)))) +simple1-soln+)))
 
+(def +med1-prob+ ".4..7.5..
+.82.5.41.
+......29.
+...5..92.
+.5.7.9.6.
+.93..8...
+.76......
+.38.4.75.
+..5.1..3.")
+
+(def +med1-soln+ "349172586
+682953417
+517684293
+764531928
+851729364
+293468175
+176395842
+938246751
+425817639")
+
+(deftest solve-med1
+  (is (= (puzzle->str (second (solve (str->puzzle +med1-prob+)))) +med1-soln+)))
+
 (def +hard1-prob+ "..9.8..1.
 ..5.....2
 1...2.853
