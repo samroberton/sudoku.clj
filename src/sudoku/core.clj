@@ -289,10 +289,50 @@ are necessarily in those two cells, and cannot be in any other cells in the box.
                                 unknowns)))))]
     (each-row-column-and-box find-in-cells puzzle)))
 
+(defn n-candidates-in-only-n-cells-rule
+  "Finds a set of `n` unplaced values which only appear in the candidate lists of `n` cells in a
+given row, column or box, so that we can conclude that those values must appear in those cells.
+Therefore we can also conclude that other candidates can be removed from those cells' candidate
+lists. For example, if two cells have candidate lists `#{3, 4, 7}` and `#{3, 6, 7}`, and there are
+no other cells in the same row/column/box with either 3 or 7 in their candidate lists, then we can
+remove the 4 and 6, since one of these cells must be the 3, and the other must be the 7.  (While
+this doesn't solve the 3 or 7, it may leave us with only one remaining place for the 4 or for the
+6.)"
+  [puzzle]
+  ;; TODO
+  nil)
+
+(defn box-line-intersection-rule
+  "If the only available cells for a value in a particular row or column are within the same
+box, then that value cannot appear in any cell in the box which is not in that row/column. For
+example, in the following puzzle:
+<pre><code>
+.xx......
+.xx......
+.xx......
+4........
+5........
+6........
+7........
+8........
+9........
+</code></pre>
+the unknown cells in the first column must include a 1 (also a 2 and a 3).  Therefore none of the
+remaining cells in box 0 can contain a 1 (nor 2 nor 3), and so 1 (and 2 and 3) can be removed from
+the candidate lists of all cells marked `x`.
+
+The same applies in reverse:  if the only available cells for a value in a particular box are in a
+single row or column, then no other cells in that row or column can contain that value."
+  [puzzle]
+  ;; TODO
+  nil)
+
 (def +inference-rules+ [only-one-candidate-rule
                         eliminate-known-values-rule
                         only-available-cell-for-value-rule
-                        n-cells-with-only-n-candidates-rule])
+                        n-cells-with-only-n-candidates-rule
+                        n-candidates-in-only-n-cells-rule
+                        box-line-intersection-rule])
 
 ;;
 ;; ## Put it all together...
